@@ -1,0 +1,1671 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Team Workspace</title>
+    <meta name="theme-color" content="#1e5e29">
+    <link rel="manifest" href="./manifest.webmanifest">
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/@babel/standalone@7.24.0/babel.min.js"></script>
+
+    <style>
+        html, body { 
+            margin: 0; 
+            padding: 0; 
+            width: 100%;
+            min-height: 100%; 
+            background-color: transparent; 
+            font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; 
+            overflow-y: auto !important; 
+        }
+        #root { 
+            width: 100%;
+            min-height: 100%; 
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 10px 14px; 
+            box-sizing: border-box;
+        }
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background-color: #cbd5e1; border-radius: 4px; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+    <div id="root">
+        <div id="pre-loader" style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:360px;font-family:sans-serif;color:#1e5e29;text-align:center;padding:20px;">
+            <div style="width:38px;height:38px;border:3px solid #dcfce7;border-top:3px solid #208838;border-radius:50%;animation:spin 0.8s linear infinite;margin-bottom:12px;"></div>
+            <div style="font-weight:700;font-size:15px;color:#1e5e29;">Connecting to Team Workspace...</div>
+        </div>
+    </div>
+
+    <script type="text/babel" data-presets="react" data-type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, browserLocalPersistence, setPersistence } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, setDoc, getDocs, serverTimestamp, query, where, arrayUnion } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        const { useState, useEffect, useRef } = React;
+        const { createRoot } = ReactDOM;
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyD976bWxegZMKDyoy__641-VwyIr31_e7o",
+            authDomain: "to-do-list-631d6.firebaseapp.com",
+            projectId: "to-do-list-631d6",
+            storageBucket: "to-do-list-631d6.firebasestorage.app",
+            messagingSenderId: "123983507197",
+            appId: "1:123983507197:web:a06c3197150eb98d855894"
+        };
+
+        let app, db, auth;
+        try {
+            app = initializeApp(firebaseConfig);
+            db = getFirestore(app);
+            auth = getAuth(app);
+            if (auth && typeof setPersistence === 'function') {
+                setPersistence(auth, browserLocalPersistence).catch(() => {});
+            }
+        } catch (initErr) {
+            console.warn("Firebase startup notification:", initErr);
+        }
+
+        const ALLOWED_EMAILS = [
+            'saad.naiem@gmail.com',
+            'saad.naiem23@gmail.com',
+            'lina.kenbazou@gmail.com'
+        ];
+
+        // Only saad.naiem@gmail.com has admin access to monitor online availability
+        const ADMIN_EMAILS = [
+            'saad.naiem@gmail.com'
+        ];
+
+        const CHUNK_SIZE = 500000;
+
+        const saveFileChunks = async (collectionName, taskId, fileId, base64Data, userId) => {
+            const totalChunks = Math.ceil(base64Data.length / CHUNK_SIZE);
+            const chunksColl = collection(db, collectionName, taskId, 'attachments', fileId, 'chunks');
+            const promises = [];
+            for (let i = 0; i < totalChunks; i++) {
+                const chunk = base64Data.substring(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE);
+                promises.push(
+                    setDoc(doc(chunksColl, `chunk_${i}`), {
+                        index: i,
+                        data: chunk,
+                        userId: userId || 'anonymous'
+                    })
+                );
+            }
+            await Promise.all(promises);
+        };
+
+        const AccurateMepLogo = ({ className = "w-28 h-28" }) => (
+            <svg 
+                viewBox="0 0 500 500" 
+                className={`${className} shadow-2xl transition-transform hover:scale-105 duration-300 drop-shadow-md`}
+                style={{ borderRadius: '22%' }}
+            >
+                <rect width="500" height="500" rx="105" fill="#208838" />
+                <path 
+                    d="M 125,55 H 200 A 16,16 0 0,1 216,71 V 190 A 20,20 0 0,0 236,210 H 264 A 20,20 0 0,0 284,190 V 71 A 16,16 0 0,1 300,55 H 375 A 55,55 0 0,1 430,110 V 195 A 16,16 0 0,1 414,211 H 310 A 20,20 0 0,0 290,231 V 269 A 20,20 0 0,0 310,289 H 414 A 16,16 0 0,1 430,305 V 390 A 55,55 0 0,1 375,445 H 300 A 16,16 0 0,1 284,429 V 310 A 20,20 0 0,0 264,290 H 236 A 20,20 0 0,0 216,310 V 429 A 16,16 0 0,1 200,445 H 125 A 55,55 0 0,1 70,390 V 305 A 16,16 0 0,1 86,289 H 190 A 20,20 0 0,0 210,269 V 231 A 20,20 0 0,0 190,211 H 86 A 16,16 0 0,1 70,195 V 110 A 55,55 0 0,1 125,55 Z" 
+                    fill="#FFFFFF" 
+                />
+                <path 
+                    d="M 68,472 C 112,425 210,310 422,26 C 402,46 385,65 372,80 C 192,272 108,390 84,452 Z" 
+                    fill="#208838" 
+                />
+            </svg>
+        );
+
+        const App = () => {
+            const [user, setUser] = useState(null);
+            const [authLoading, setAuthLoading] = useState(true);
+            const [authError, setAuthError] = useState(null);
+            const [activeTab, setActiveTab] = useState('team');
+
+            const [tasks, setTasks] = useState([]);
+            const [loadingData, setLoadingData] = useState(false);
+            const [alertMessage, setAlertMessage] = useState(null);
+            const [downloadingFileId, setDownloadingFileId] = useState(null);
+
+            const [confirmModal, setConfirmModal] = useState({ isOpen: false, title: '', message: '', onConfirm: null });
+
+            const [filterStatus, setFilterStatus] = useState('all');
+            const [filterAssignee, setFilterAssignee] = useState('all');
+            const [filterCreatedMonth, setFilterCreatedMonth] = useState('');
+            const [filterCreatedDate, setFilterCreatedDate] = useState('');
+            const [filterDueDate, setFilterDueDate] = useState('');
+
+            const [newTaskTitle, setNewTaskTitle] = useState('');
+            const [newTaskAssignee, setNewTaskAssignee] = useState('');
+            const [newTaskDueDate, setNewTaskDueDate] = useState('');
+            const [newTaskDueTime, setNewTaskDueTime] = useState('');
+            const [newTaskFiles, setNewTaskFiles] = useState([]);
+
+            const [expandedTaskId, setExpandedTaskId] = useState(null);
+            const [commentText, setCommentText] = useState('');
+            const [commentFiles, setCommentFiles] = useState([]);
+            
+            const [editingTaskId, setEditingTaskId] = useState(null);
+            const [editTitle, setEditTitle] = useState('');
+            const [editAssignee, setEditAssignee] = useState('');
+            const [editDueDate, setEditDueDate] = useState('');
+            const [editDueTime, setEditDueTime] = useState('');
+            const [editTaskFiles, setEditTaskFiles] = useState([]);
+
+            const [editingNoteIndex, setEditingNoteIndex] = useState(null);
+            const [editNoteText, setEditNoteText] = useState('');
+
+            const [readNotesMap, setReadNotesMap] = useState({});
+
+            const [schedulingFollowUpId, setSchedulingFollowUpId] = useState(null);
+            const [followUpDate, setFollowUpDate] = useState('');
+            const [followUpTime, setFollowUpTime] = useState('');
+
+            const [presenceUsers, setPresenceUsers] = useState([]);
+            const [showPresenceModal, setShowPresenceModal] = useState(false);
+
+            const prevTasksRef = useRef([]);
+            const isInitialLoadRef = useRef(true);
+
+            const isAdmin = user && ADMIN_EMAILS.includes((user.email || '').toLowerCase().trim());
+
+            useEffect(() => {
+                if (!auth) {
+                    setAuthLoading(false);
+                    return;
+                }
+
+                const fallbackTimer = setTimeout(() => {
+                    setAuthLoading(false);
+                }, 1200);
+
+                const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+                    clearTimeout(fallbackTimer);
+                    if (currentUser) {
+                        const email = (currentUser.email || '').toLowerCase().trim();
+                        if (!ALLOWED_EMAILS.includes(email)) {
+                            await signOut(auth);
+                            setUser(null);
+                            setAuthError({
+                                title: "Unauthorized to Log In",
+                                email: currentUser.email || 'Unknown',
+                                message: "You are not authorized to log in to this workspace. Only approved team members can access this application."
+                            });
+                            setAuthLoading(false);
+                            return;
+                        }
+                    }
+                    setUser(currentUser);
+                    setAuthLoading(false);
+                });
+
+                return () => {
+                    clearTimeout(fallbackTimer);
+                    unsubscribe();
+                };
+            }, []);
+
+            useEffect(() => {
+                if (!user || !db) return;
+
+                const updatePresence = async (isOnline = true) => {
+                    try {
+                        const userPresenceRef = doc(db, 'user_presence', user.uid);
+                        await setDoc(userPresenceRef, {
+                            uid: user.uid,
+                            email: (user.email || '').toLowerCase().trim(),
+                            displayName: user.displayName || 'Team Member',
+                            photoURL: user.photoURL || '',
+                            online: isOnline,
+                            lastActive: serverTimestamp(),
+                            lastActiveIso: new Date().toISOString()
+                        }, { merge: true });
+                    } catch (err) {
+                        console.warn("Presence ping notice:", err);
+                    }
+                };
+
+                updatePresence(true);
+
+                const intervalId = setInterval(() => {
+                    if (document.visibilityState === 'visible') {
+                        updatePresence(true);
+                    }
+                }, 45000);
+
+                const handleVisibilityChange = () => {
+                    if (document.visibilityState === 'visible') {
+                        updatePresence(true);
+                    }
+                };
+
+                const handleBeforeUnload = () => {
+                    updatePresence(false);
+                };
+
+                document.addEventListener('visibilitychange', handleVisibilityChange);
+                window.addEventListener('beforeunload', handleBeforeUnload);
+
+                return () => {
+                    clearInterval(intervalId);
+                    document.removeEventListener('visibilitychange', handleVisibilityChange);
+                    window.removeEventListener('beforeunload', handleBeforeUnload);
+                    updatePresence(false);
+                };
+            }, [user]);
+
+            useEffect(() => {
+                if (!user || !isAdmin || !db) return;
+
+                const unsubscribePresence = onSnapshot(collection(db, 'user_presence'), (snapshot) => {
+                    const onlineList = [];
+                    snapshot.forEach((docSnap) => {
+                        onlineList.push({ id: docSnap.id, ...docSnap.data() });
+                    });
+                    
+                    onlineList.sort((a, b) => {
+                        const timeA = a.lastActive?.toMillis ? a.lastActive.toMillis() : new Date(a.lastActiveIso || 0).getTime();
+                        const timeB = b.lastActive?.toMillis ? b.lastActive.toMillis() : new Date(b.lastActiveIso || 0).getTime();
+                        return timeB - timeA;
+                    });
+
+                    setPresenceUsers(onlineList);
+                }, (err) => {
+                    console.warn("Presence read notice:", err);
+                });
+
+                return () => unsubscribePresence();
+            }, [user, isAdmin]);
+
+            const handleGoogleLogin = async () => {
+                setAuthError(null);
+                const provider = new GoogleAuthProvider();
+                provider.setCustomParameters({ prompt: 'select_account' });
+                try {
+                    const result = await signInWithPopup(auth, provider);
+                    const email = (result.user?.email || '').toLowerCase().trim();
+                    if (!ALLOWED_EMAILS.includes(email)) {
+                        const attemptEmail = result.user?.email || 'Unknown';
+                        await signOut(auth);
+                        setUser(null);
+                        setAuthError({
+                            title: "Unauthorized to Log In",
+                            email: attemptEmail,
+                            message: "You are not authorized to log in to this workspace. Only approved team members can access this application."
+                        });
+                    }
+                } catch (err) {
+                    console.error("Login Error:", err);
+                    if (err.code === 'auth/unauthorized-domain') {
+                        setAuthError({
+                            title: "Domain Not Authorized",
+                            message: "Google Sites domain is blocked. Please ensure 'googleusercontent.com' is listed in your Firebase Authorized Domains."
+                        });
+                    } else if (err.code === 'auth/popup-closed-by-user') {
+                        setAuthError({
+                            title: "Login Cancelled",
+                            message: "The Google sign-in window was closed before finishing."
+                        });
+                    } else {
+                        setAuthError({
+                            title: "Authentication Error",
+                            message: err.message
+                        });
+                    }
+                }
+            };
+
+            const handleLogout = async () => {
+                if (user && db) {
+                    try {
+                        await setDoc(doc(db, 'user_presence', user.uid), {
+                            online: false,
+                            lastActive: serverTimestamp(),
+                            lastActiveIso: new Date().toISOString()
+                        }, { merge: true });
+                    } catch (e) {}
+                }
+                if (auth) signOut(auth);
+            };
+
+            useEffect(() => {
+                if (!user || !db) return;
+                
+                setLoadingData(true);
+                let q = activeTab === 'team' ? query(collection(db, 'team_todos')) : query(collection(db, 'private_todos'), where("userId", "==", user.uid));
+
+                const unsubscribe = onSnapshot(q, (snapshot) => {
+                    const tasksData = [];
+                    snapshot.forEach((docSnap) => {
+                        tasksData.push({ id: docSnap.id, ...docSnap.data() });
+                    });
+                    
+                    tasksData.sort((a, b) => {
+                       if (a.sortOrder !== undefined && b.sortOrder !== undefined) {
+                           return a.sortOrder - b.sortOrder;
+                       }
+                       const timeA = a.createdAt?.toMillis() || 0;
+                       const timeB = b.createdAt?.toMillis() || 0;
+                       return timeB - timeA; 
+                    });
+                    
+                    const prevTasks = prevTasksRef.current;
+                    let totalNewNotesCount = 0;
+
+                    if (!isInitialLoadRef.current && prevTasks.length > 0) {
+                        tasksData.forEach(newTask => {
+                            const oldTask = prevTasks.find(t => t.id === newTask.id);
+                            if (oldTask && oldTask.comments && newTask.comments) {
+                                if (newTask.comments.length > oldTask.comments.length) {
+                                    const latestComment = newTask.comments[newTask.comments.length - 1];
+                                    if (latestComment.author !== user.displayName) {
+                                        totalNewNotesCount++;
+                                    }
+                                }
+                            }
+                        });
+                    }
+
+                    if (totalNewNotesCount > 0) {
+                        setAlertMessage(`💬 You have ${totalNewNotesCount} new unread note(s) across tasks!`);
+                        setTimeout(() => setAlertMessage(null), 6000);
+                    }
+
+                    isInitialLoadRef.current = false;
+                    prevTasksRef.current = tasksData;
+                    setTasks(tasksData);
+                    setLoadingData(false);
+                }, (err) => {
+                    console.error("Firestore Error:", err);
+                    setAuthError({
+                        title: "Database Access Error",
+                        message: "Cannot read database. Please verify your Firestore Rules."
+                    });
+                    setLoadingData(false);
+                });
+
+                return () => unsubscribe();
+            }, [user, activeTab]);
+
+            const convertFilesToBase64 = (fileList) => {
+                return Promise.all(
+                    Array.from(fileList).map(file => {
+                        return new Promise((resolve) => {
+                            if (file.type.startsWith('image/') && file.type !== 'image/svg+xml') {
+                                const reader = new FileReader();
+                                reader.onload = (e) => {
+                                    const img = new Image();
+                                    img.onload = () => {
+                                        const MAX_DIM = 1600;
+                                        let width = img.width;
+                                        let height = img.height;
+                                        if (width > height && width > MAX_DIM) {
+                                            height = Math.round((height * MAX_DIM) / width);
+                                            width = MAX_DIM;
+                                        } else if (height > MAX_DIM) {
+                                            width = Math.round((width * MAX_DIM) / height);
+                                            height = MAX_DIM;
+                                        }
+                                        const canvas = document.createElement('canvas');
+                                        canvas.width = width;
+                                        canvas.height = height;
+                                        const ctx = canvas.getContext('2d');
+                                        ctx.drawImage(img, 0, 0, width, height);
+                                        const compressedData = canvas.toDataURL('image/jpeg', 0.82);
+                                        resolve({
+                                            id: Date.now().toString() + Math.random().toString(36).substring(2, 6),
+                                            name: file.name,
+                                            size: Math.round((compressedData.length * 3) / 4),
+                                            type: 'image/jpeg',
+                                            data: compressedData
+                                        });
+                                    };
+                                    img.onerror = () => {
+                                        resolve({
+                                            id: Date.now().toString() + Math.random().toString(36).substring(2, 6),
+                                            name: file.name,
+                                            size: file.size,
+                                            type: file.type,
+                                            data: e.target.result
+                                        });
+                                    };
+                                    img.src = e.target.result;
+                                };
+                                reader.readAsDataURL(file);
+                            } else {
+                                const reader = new FileReader();
+                                reader.onload = () => resolve({
+                                    id: Date.now().toString() + Math.random().toString(36).substring(2, 6),
+                                    name: String(file.name || 'file'),
+                                    size: Number(file.size || 0),
+                                    type: String(file.type || 'application/octet-stream'),
+                                    data: String(reader.result || '')
+                                });
+                                reader.onerror = () => resolve(null);
+                                reader.readAsDataURL(file);
+                            }
+                        });
+                    })
+                ).then(results => results.filter(Boolean));
+            };
+
+            const handleAddTask = async (e) => {
+                e.preventDefault();
+                if (!newTaskTitle.trim() || !user || !db) return;
+
+                let dueDateTimeString = null;
+                if (newTaskDueDate && newTaskDueTime) {
+                    dueDateTimeString = new Date(`${newTaskDueDate}T${newTaskDueTime}`).toISOString();
+                } else if (newTaskDueDate) {
+                    dueDateTimeString = new Date(`${newTaskDueDate}T00:00`).toISOString();
+                }
+
+                const collectionName = activeTab === 'team' ? 'team_todos' : 'private_todos';
+                const filesToUpload = [...newTaskFiles];
+
+                const sanitizedMetadata = filesToUpload.map(f => ({
+                    id: String(f.id),
+                    name: String(f.name),
+                    size: Number(f.size),
+                    type: String(f.type)
+                }));
+
+                const taskPayload = {
+                    title: newTaskTitle.trim(),
+                    assignee: newTaskAssignee.trim() || user.displayName || 'Unassigned',
+                    dueDateTime: dueDateTimeString,
+                    status: 'pending',
+                    comments: [],
+                    followUps: [],
+                    attachments: sanitizedMetadata, 
+                    sortOrder: tasks.length > 0 ? Math.min(...tasks.map(t => t.sortOrder || 0)) - 10 : 0,
+                    createdAt: serverTimestamp(),
+                    userId: user.uid,
+                    creatorEmail: user.email || '',
+                    creatorName: user.displayName || 'Team Member'
+                };
+
+                setNewTaskTitle('');
+                setNewTaskAssignee('');
+                setNewTaskDueDate('');
+                setNewTaskDueTime('');
+                setNewTaskFiles([]);
+
+                try {
+                    const taskDocRef = await addDoc(collection(db, collectionName), taskPayload);
+                    setAlertMessage("✅ Task created successfully!");
+                    setTimeout(() => setAlertMessage(null), 3000);
+
+                    if (filesToUpload.length > 0) {
+                        for (const file of filesToUpload) {
+                            if (file.data) {
+                                await saveFileChunks(collectionName, taskDocRef.id, file.id, file.data, user.uid);
+                            }
+                        }
+                    }
+                } catch (err) { 
+                    console.error("Error adding task:", err);
+                    setAlertMessage("❌ Database error: " + err.message);
+                    setTimeout(() => setAlertMessage(null), 5000);
+                }
+            };
+
+            const handleDownloadAttachment = async (taskId, file) => {
+                if (file.data && file.data.startsWith('data:')) {
+                    triggerDownload(file.data, file.name);
+                    return;
+                }
+
+                try {
+                    setDownloadingFileId(file.id);
+                    const collectionName = activeTab === 'team' ? 'team_todos' : 'private_todos';
+                    const chunksColl = collection(db, collectionName, taskId, 'attachments', file.id, 'chunks');
+                    const snap = await getDocs(chunksColl);
+
+                    if (snap.empty) {
+                        setAlertMessage("⚠️ File data is still uploading or unavailable.");
+                        setTimeout(() => setAlertMessage(null), 3000);
+                        setDownloadingFileId(null);
+                        return;
+                    }
+
+                    const chunks = [];
+                    snap.forEach(d => chunks.push(d.data()));
+                    chunks.sort((a, b) => a.index - b.index);
+                    const fullBase64 = chunks.map(c => c.data).join('');
+                    triggerDownload(fullBase64, file.name);
+                } catch (err) {
+                    console.error("Download error:", err);
+                    setAlertMessage("❌ Could not download file: " + err.message);
+                    setTimeout(() => setAlertMessage(null), 4000);
+                } finally {
+                    setDownloadingFileId(null);
+                }
+            };
+
+            const triggerDownload = (dataUrl, filename) => {
+                const link = document.createElement('a');
+                link.href = dataUrl;
+                link.download = filename;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+            };
+
+            const handleUpdateTask = async (taskId) => {
+                if (!editTitle.trim() || !db) return;
+                const collectionName = activeTab === 'team' ? 'team_todos' : 'private_todos';
+                
+                let dueDateTimeString = null;
+                if (editDueDate && editDueTime) {
+                    dueDateTimeString = new Date(`${editDueDate}T${editDueTime}`).toISOString();
+                } else if (editDueDate) {
+                    dueDateTimeString = new Date(`${editDueDate}T00:00`).toISOString();
+                }
+
+                try {
+                    const taskToUpdate = tasks.find(t => t.id === taskId);
+                    let updatedAttachments = taskToUpdate.attachments || [];
+
+                    const newFilesToUpload = [...editTaskFiles];
+                    if (newFilesToUpload.length > 0) {
+                        const sanitizedNewMeta = newFilesToUpload.map(f => ({
+                            id: String(f.id),
+                            name: String(f.name),
+                            size: Number(f.size),
+                            type: String(f.type)
+                        }));
+                        updatedAttachments = [...updatedAttachments, ...sanitizedNewMeta];
+                    }
+
+                    await updateDoc(doc(db, collectionName, taskId), {
+                        title: editTitle.trim(),
+                        assignee: editAssignee.trim() || 'Unassigned',
+                        dueDateTime: dueDateTimeString,
+                        attachments: updatedAttachments
+                    });
+
+                    setEditingTaskId(null);
+                    setEditTaskFiles([]);
+
+                    if (newFilesToUpload.length > 0) {
+                        for (const file of newFilesToUpload) {
+                            if (file.data) {
+                                await saveFileChunks(collectionName, taskId, file.id, file.data, user.uid);
+                            }
+                        }
+                    }
+                } catch(err) { console.error("Error updating task:", err); }
+            };
+
+            const handleRemoveAttachment = async (taskId, fileId) => {
+                if (!db) return;
+                const collectionName = activeTab === 'team' ? 'team_todos' : 'private_todos';
+                const task = tasks.find(t => t.id === taskId);
+                if (!task) return;
+
+                const updatedAttachments = (task.attachments || []).filter(f => f.id !== fileId);
+                try {
+                    await updateDoc(doc(db, collectionName, taskId), { attachments: updatedAttachments });
+                } catch(err) { console.error("Error removing attachment:", err); }
+            };
+
+            const handleMoveTask = async (index, direction) => {
+                if (!db) return;
+                const targetIndex = direction === 'up' ? index - 1 : index + 1;
+                if (targetIndex < 0 || targetIndex >= tasks.length) return;
+
+                const collectionName = activeTab === 'team' ? 'team_todos' : 'private_todos';
+                const currentTask = tasks[index];
+                const targetTask = tasks[targetIndex];
+
+                try {
+                    const tempOrder = currentTask.sortOrder || index;
+                    await updateDoc(doc(db, collectionName, currentTask.id), { sortOrder: targetTask.sortOrder || targetIndex });
+                    await updateDoc(doc(db, collectionName, targetTask.id), { sortOrder: tempOrder });
+                } catch(err) { console.error("Error reordering tasks:", err); }
+            };
+
+            const handleStatusChange = async (taskId, newStatus) => {
+                if (!db) return;
+                const collectionName = activeTab === 'team' ? 'team_todos' : 'private_todos';
+                try {
+                    await updateDoc(doc(db, collectionName, taskId), { status: newStatus });
+                } catch (err) { console.error(err); }
+            };
+
+            const confirmDeleteTask = (taskId, taskCreatorEmail, taskUserId, taskTitle) => {
+                const isCreator = (user.email && taskCreatorEmail && user.email === taskCreatorEmail) || (user.uid === taskUserId);
+                if (!isCreator) {
+                    setAlertMessage("⚠️ Only the creator of this task can delete it.");
+                    setTimeout(() => setAlertMessage(null), 4000);
+                    return;
+                }
+
+                setConfirmModal({
+                    isOpen: true,
+                    title: 'Delete Task',
+                    message: `Are you sure you want to delete "${taskTitle}"? This cannot be undone.`,
+                    onConfirm: async () => {
+                        const collectionName = activeTab === 'team' ? 'team_todos' : 'private_todos';
+                        try {
+                            await deleteDoc(doc(db, collectionName, taskId));
+                        } catch (err) { console.error(err); }
+                        setConfirmModal({ isOpen: false, title: '', message: '', onConfirm: null });
+                    }
+                });
+            };
+
+            const handleAddComment = async (taskId) => {
+                if ((!commentText.trim() && commentFiles.length === 0) || !db) return;
+                const collectionName = activeTab === 'team' ? 'team_todos' : 'private_todos';
+
+                try {
+                    const filesToUpload = [...commentFiles];
+                    const sanitizedCommentMeta = filesToUpload.map(f => ({
+                        id: String(f.id),
+                        name: String(f.name),
+                        size: Number(f.size),
+                        type: String(f.type)
+                    }));
+
+                    const newComment = {
+                        id: Date.now().toString(),
+                        text: commentText.trim(),
+                        author: user.displayName || 'Team Member',
+                        photoURL: user.photoURL || '',
+                        date: new Date().toISOString(),
+                        attachments: sanitizedCommentMeta 
+                    };
+
+                    setCommentText('');
+                    setCommentFiles([]);
+
+                    await updateDoc(doc(db, collectionName, taskId), {
+                        comments: arrayUnion(newComment)
+                    });
+
+                    if (filesToUpload.length > 0) {
+                        for (const file of filesToUpload) {
+                            if (file.data) {
+                                await saveFileChunks(collectionName, taskId, file.id, file.data, user.uid);
+                            }
+                        }
+                    }
+                } catch (err) { 
+                    console.error("Error adding note:", err);
+                    setAlertMessage("❌ Failed to add note: " + err.message);
+                    setTimeout(() => setAlertMessage(null), 4000);
+                }
+            };
+
+            const confirmDeleteComment = (taskId, commentId) => {
+                setConfirmModal({
+                    isOpen: true,
+                    title: 'Delete Note',
+                    message: 'Are you sure you want to delete this note?',
+                    onConfirm: async () => {
+                        const collectionName = activeTab === 'team' ? 'team_todos' : 'private_todos';
+                        const task = tasks.find(t => t.id === taskId);
+                        if (!task || !db) return;
+
+                        const updatedComments = task.comments.filter(c => c.id !== commentId);
+                        try {
+                            await updateDoc(doc(db, collectionName, taskId), { comments: updatedComments });
+                        } catch(err) { console.error("Error deleting comment:", err); }
+                        setConfirmModal({ isOpen: false, title: '', message: '', onConfirm: null });
+                    }
+                });
+            };
+
+            const handleUpdateComment = async (taskId, commentId) => {
+                if (!editNoteText.trim() || !db) return;
+                const collectionName = activeTab === 'team' ? 'team_todos' : 'private_todos';
+                const task = tasks.find(t => t.id === taskId);
+                if (!task) return;
+
+                const updatedComments = task.comments.map(c => c.id === commentId ? { ...c, text: editNoteText.trim() } : c);
+                try {
+                    await updateDoc(doc(db, collectionName, taskId), { comments: updatedComments });
+                    setEditingNoteIndex(null);
+                    setEditNoteText('');
+                } catch(err) { console.error("Error editing comment:", err); }
+            };
+
+            const handleRemoveCommentAttachment = async (taskId, commentId, fileId) => {
+                if (!db) return;
+                const collectionName = activeTab === 'team' ? 'team_todos' : 'private_todos';
+                const task = tasks.find(t => t.id === taskId);
+                if (!task) return;
+
+                const updatedComments = task.comments.map(c => {
+                    if (c.id === commentId) {
+                        return {
+                            ...c,
+                            attachments: (c.attachments || []).filter(f => f.id !== fileId)
+                        };
+                    }
+                    return c;
+                });
+
+                try {
+                    await updateDoc(doc(db, collectionName, taskId), { comments: updatedComments });
+                } catch(err) { console.error("Error removing comment attachment:", err); }
+            };
+
+            const openTaskNotes = (taskId, taskComments) => {
+                setExpandedTaskId(expandedTaskId === taskId ? null : taskId);
+                if (taskComments && taskComments.length > 0) {
+                    setReadNotesMap(prev => ({
+                        ...prev,
+                        [taskId]: taskComments.length
+                    }));
+                }
+            };
+
+            const openScheduleFollowUp = (taskId) => {
+                const now = new Date();
+                const tzOffset = now.getTimezoneOffset() * 60000;
+                const localISOTime = (new Date(now - tzOffset)).toISOString().slice(0,16);
+                const [datePart, timePart] = localISOTime.split('T');
+                
+                setFollowUpDate(datePart);
+                setFollowUpTime(timePart);
+                setSchedulingFollowUpId(taskId);
+            };
+
+            const submitScheduledFollowUp = async (taskId) => {
+                if (!followUpDate || !followUpTime || !db) return;
+                const collectionName = activeTab === 'team' ? 'team_todos' : 'private_todos';
+
+                try {
+                    const combinedDateTime = new Date(`${followUpDate}T${followUpTime}`).toISOString();
+                    const task = tasks.find(t => t.id === taskId);
+                    const nextNumber = (task.followUps?.length || 0) + 1;
+                    
+                    const newFollowUp = {
+                        id: Date.now().toString(),
+                        number: nextNumber,
+                        dateTime: combinedDateTime,
+                        author: user.displayName || 'Team Member',
+                        status: 'pending' 
+                    };
+
+                    const updatedFollowUps = [...(task.followUps || []), newFollowUp];
+                    await updateDoc(doc(db, collectionName, taskId), { followUps: updatedFollowUps });
+                    setSchedulingFollowUpId(null);
+                } catch (err) { console.error(err); }
+            };
+
+            const toggleFollowUpStatus = async (taskId, followUpId) => {
+                if (!db) return;
+                const collectionName = activeTab === 'team' ? 'team_todos' : 'private_todos';
+                const task = tasks.find(t => t.id === taskId);
+                if(!task) return;
+                 
+                const updatedFollowUps = task.followUps.map(fu => {
+                    if(fu.id === followUpId) return { ...fu, status: fu.status === 'completed' ? 'pending' : 'completed' };
+                    return fu;
+                });
+                 
+                await updateDoc(doc(db, collectionName, taskId), { followUps: updatedFollowUps });
+            };
+
+            const formatDateTimeFormatted = (isoString) => {
+                if (!isoString) return '';
+                const d = new Date(isoString);
+                const day = String(d.getDate()).padStart(2, '0');
+                const month = String(d.getMonth() + 1).padStart(2, '0');
+                const year = d.getFullYear();
+                const dateFormatted = `${day}/${month}/${year}`;
+                const timeFormatted = d.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+                return (
+                    <span>
+                        <strong className="text-blue-950 font-extrabold">{dateFormatted}</strong> at <strong className="text-purple-950 font-extrabold">{timeFormatted}</strong>
+                    </span>
+                );
+            };
+
+            const formatDateTimePlain = (isoString) => {
+                if (!isoString) return '';
+                const d = new Date(isoString);
+                const day = String(d.getDate()).padStart(2, '0');
+                const month = String(d.getMonth() + 1).padStart(2, '0');
+                const year = d.getFullYear();
+                const dateFormatted = `${day}/${month}/${year}`;
+                const timeFormatted = d.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+                return `${dateFormatted} at ${timeFormatted}`;
+            };
+
+            const getTimeAgo = (timestamp, isoString) => {
+                let timeMillis = 0;
+                if (timestamp && timestamp.toMillis) {
+                    timeMillis = timestamp.toMillis();
+                } else if (isoString) {
+                    timeMillis = new Date(isoString).getTime();
+                }
+                if (!timeMillis) return 'Just now';
+
+                const diffSeconds = Math.floor((Date.now() - timeMillis) / 1000);
+                if (diffSeconds < 60) return `${diffSeconds}s ago`;
+                const diffMinutes = Math.floor(diffSeconds / 60);
+                if (diffMinutes < 60) return `${diffMinutes}m ago`;
+                const diffHours = Math.floor(diffMinutes / 60);
+                if (diffHours < 24) return `${diffHours}h ago`;
+                return `${Math.floor(diffHours / 24)}d ago`;
+            };
+
+            const getRowStyle = (status) => {
+                switch(status) {
+                    case 'completed': return 'bg-emerald-100 border-emerald-300 text-slate-900 shadow-sm';
+                    case 'in-progress': return activeTab === 'team' ? 'bg-blue-50 border-blue-400 shadow-md text-slate-800' : 'bg-purple-50 border-purple-400 shadow-md text-slate-800';
+                    default: return activeTab === 'team' ? 'bg-white border-slate-200 text-slate-800' : 'bg-white border-slate-200 text-slate-800';
+                }
+            };
+
+            const filteredTasks = tasks.filter(task => {
+                if (filterStatus !== 'all' && task.status !== filterStatus) return false;
+                if (filterAssignee !== 'all' && task.assignee !== filterAssignee) return false;
+                
+                if (task.createdAt) {
+                    const createdDateObj = new Date(task.createdAt.toMillis());
+                    const year = createdDateObj.getFullYear();
+                    const month = String(createdDateObj.getMonth() + 1).padStart(2, '0');
+                    const day = String(createdDateObj.getDate()).padStart(2, '0');
+
+                    if (filterCreatedMonth) {
+                        const taskMonth = `${year}-${month}`;
+                        if (taskMonth !== filterCreatedMonth) return false;
+                    }
+
+                    if (filterCreatedDate) {
+                        const localDateStr = `${year}-${month}-${day}`;
+                        if (localDateStr !== filterCreatedDate) return false;
+                    }
+                } else if (filterCreatedMonth || filterCreatedDate) {
+                    return false;
+                }
+                
+                if (filterDueDate && task.dueDateTime) {
+                    const dueObj = new Date(task.dueDateTime);
+                    const y = dueObj.getFullYear();
+                    const m = String(dueObj.getMonth() + 1).padStart(2, '0');
+                    const d = String(dueObj.getDate()).padStart(2, '0');
+                    const localDueStr = `${y}-${m}-${d}`;
+                    if (localDueStr !== filterDueDate) return false;
+                }
+
+                return true;
+            });
+
+            const uniqueAssignees = [...new Set(tasks.map(t => t.assignee).filter(Boolean))];
+
+            const isFilterActive = filterStatus !== 'all' || filterAssignee !== 'all' || filterCreatedMonth || filterCreatedDate || filterDueDate;
+            const summarySource = isFilterActive ? filteredTasks : tasks;
+            const totalTasksCount = summarySource.length;
+            const pendingCount = summarySource.filter(t => t.status === 'pending').length;
+            const inProgressCount = summarySource.filter(t => t.status === 'in-progress').length;
+            const completedCount = summarySource.filter(t => t.status === 'completed').length;
+
+            // Exclude admin accounts to count only team members
+            const nonAdminPresenceUsers = presenceUsers.filter(u => {
+                const email = (u.email || '').toLowerCase().trim();
+                return !ADMIN_EMAILS.includes(email);
+            });
+
+            const activeOnlineCount = nonAdminPresenceUsers.filter(u => {
+                const timeMillis = u.lastActive?.toMillis ? u.lastActive.toMillis() : new Date(u.lastActiveIso || 0).getTime();
+                const isRecent = (Date.now() - timeMillis) < 120000;
+                return u.online && isRecent;
+            }).length;
+
+            const nonAdminAllowedCount = ALLOWED_EMAILS.filter(email => !ADMIN_EMAILS.includes(email.toLowerCase().trim())).length;
+
+            if (authLoading) {
+                return (
+                    <div className="flex flex-col items-center justify-center min-h-[400px] w-full bg-[#208838] rounded-2xl p-8 shadow-xl">
+                        <AccurateMepLogo className="w-20 h-20 animate-pulse" />
+                        <span className="mt-4 text-white font-bold tracking-wide text-sm">Opening Team Workspace...</span>
+                    </div>
+                );
+            }
+
+            if (!user) {
+                return (
+                    <div className="min-h-[580px] w-full flex items-center justify-center p-4 sm:p-6 bg-gradient-to-br from-[#166026] via-[#208838] to-[#28a745] rounded-3xl relative overflow-hidden shadow-2xl">
+                        <div className="absolute -top-24 -left-24 w-80 h-80 rounded-full bg-white/10 blur-3xl pointer-events-none"></div>
+                        <div className="absolute -bottom-24 -right-24 w-80 h-80 rounded-full bg-emerald-200/15 blur-3xl pointer-events-none"></div>
+
+                        <div className="w-full max-w-md mx-auto bg-white/95 backdrop-blur-md p-6 sm:p-8 rounded-3xl shadow-2xl border border-white/40 text-center relative z-10">
+                            
+                            <div className="flex justify-center mb-4">
+                                <AccurateMepLogo className="w-24 h-24 sm:w-28 sm:h-28" />
+                            </div>
+
+                            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-300 text-[11px] font-bold text-[#1a6e2d] mb-4 shadow-sm">
+                                <span className="relative flex h-2 w-2">
+                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-500 opacity-75"></span>
+                                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-600"></span>
+                                </span>
+                                <span>⚡ LIVE SYNC ONLINE • REAL-TIME COLLABORATION</span>
+                            </div>
+
+                            <h2 className="text-2xl font-black text-slate-900 mb-1.5 tracking-tight">Team Workspace</h2>
+                            <p className="text-slate-600 mb-6 text-xs sm:text-sm font-medium">Sign in with your authorized Google account to collaborate</p>
+                            
+                            {authError && (
+                                <div className="mb-6 p-4 bg-red-50 border-2 border-red-300 rounded-2xl text-left shadow-md">
+                                    <div className="flex items-center gap-2 text-red-700 font-extrabold text-sm mb-1.5">
+                                        <svg className="w-5 h-5 text-red-600 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+                                        <span>{authError.title || "Unauthorized to Log In"}</span>
+                                    </div>
+                                    <p className="text-red-800 text-xs leading-relaxed font-medium">
+                                        {authError.message}
+                                    </p>
+                                    {authError.email && (
+                                        <div className="mt-2.5 pt-2 border-t border-red-200 text-[11px] text-red-900 font-mono bg-red-100/70 p-1.5 rounded-lg">
+                                            Attempted account: <span className="font-bold underline">{authError.email}</span>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            <button 
+                                onClick={handleGoogleLogin}
+                                className="w-full flex items-center justify-center gap-3 bg-white border-2 border-slate-200 text-slate-800 font-bold py-3.5 px-4 rounded-2xl hover:bg-emerald-50/50 hover:border-[#208838] hover:shadow-lg transition-all shadow-md cursor-pointer group"
+                            >
+                                <svg className="w-5 h-5 transition-transform group-hover:scale-110" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
+                                <span className="text-sm">Sign in with Google</span>
+                            </button>
+
+                            <div className="mt-6 pt-4 border-t border-slate-100 flex items-center justify-center gap-1.5 text-[11px] text-slate-500 font-medium">
+                                <svg className="w-3.5 h-3.5 text-[#208838]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
+                                <span>Strictly restricted to authorized team members</span>
+                            </div>
+                        </div>
+                    </div>
+                );
+            }
+
+            return (
+                <div className="w-full max-w-[97%] 2xl:max-w-[96%] mx-auto bg-white rounded-2xl shadow-xl border border-slate-200 flex flex-col relative mb-4 overflow-hidden">
+                    
+                    {/* Admin-Only Presence Tracker Modal */}
+                    {showPresenceModal && isAdmin && (
+                        <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4">
+                            <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-100 animate-in fade-in zoom-in duration-200 flex flex-col max-h-[85vh]">
+                                <div className="flex items-center justify-between pb-3 border-b border-slate-200 mb-4">
+                                    <div className="flex items-center gap-2">
+                                        <div className="p-2 rounded-xl bg-emerald-100 text-[#208838]">
+                                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path></svg>
+                                        </div>
+                                        <div>
+                                            <h3 className="text-base font-black text-slate-900">Team Presence Tracker</h3>
+                                            <p className="text-[11px] text-slate-500 font-semibold">Live activity monitor (Visible to Admin only)</p>
+                                        </div>
+                                    </div>
+                                    <button 
+                                        onClick={() => setShowPresenceModal(false)}
+                                        className="text-slate-400 hover:text-slate-700 p-1 rounded-lg hover:bg-slate-100 text-lg font-bold"
+                                    >
+                                        ×
+                                    </button>
+                                </div>
+
+                                <div className="overflow-y-auto space-y-3 custom-scrollbar pr-1 flex-1">
+                                    {presenceUsers.length === 0 ? (
+                                        <p className="text-xs text-slate-500 text-center py-6">No presence data recorded yet.</p>
+                                    ) : (
+                                        presenceUsers.map(u => {
+                                            const timeMillis = u.lastActive?.toMillis ? u.lastActive.toMillis() : new Date(u.lastActiveIso || 0).getTime();
+                                            const isRecent = (Date.now() - timeMillis) < 120000;
+                                            const isOnlineNow = u.online && isRecent;
+
+                                            return (
+                                                <div key={u.id} className="p-3 rounded-xl border border-slate-200 bg-slate-50/70 flex items-center justify-between gap-3">
+                                                    <div className="flex items-center gap-3 truncate">
+                                                        <div className="relative shrink-0">
+                                                            {u.photoURL ? (
+                                                                <img src={u.photoURL} alt="" className="w-10 h-10 rounded-full border border-slate-200 object-cover" />
+                                                            ) : (
+                                                                <div className="w-10 h-10 rounded-full bg-emerald-100 text-[#208838] font-black text-sm flex items-center justify-center border border-emerald-200">
+                                                                    {(u.displayName || u.email || 'U').charAt(0).toUpperCase()}
+                                                                </div>
+                                                            )}
+                                                            <span className={`absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-white ${isOnlineNow ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'}`}></span>
+                                                        </div>
+
+                                                        <div className="truncate">
+                                                            <div className="flex items-center gap-2">
+                                                                <span className="font-bold text-xs text-slate-900 truncate">{u.displayName || 'Team Member'}</span>
+                                                                {u.email === user.email && (
+                                                                    <span className="text-[10px] bg-slate-200 text-slate-700 px-1.5 py-0.2 rounded font-bold">You</span>
+                                                                )}
+                                                            </div>
+                                                            <span className="text-[11px] text-slate-500 truncate block font-mono">{u.email}</span>
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="text-right shrink-0">
+                                                        {isOnlineNow ? (
+                                                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-black bg-emerald-100 text-emerald-800 border border-emerald-300">
+                                                                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>
+                                                                Online Now
+                                                            </span>
+                                                        ) : (
+                                                            <div className="text-right">
+                                                                <span className="text-[11px] font-bold text-slate-500 block">Offline</span>
+                                                                <span className="text-[10px] text-slate-400">
+                                                                    Last seen {getTimeAgo(u.lastActive, u.lastActiveIso)}
+                                                                </span>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            );
+                                        })
+                                    )}
+                                </div>
+
+                                <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
+                                    <span>🟢 <strong>{activeOnlineCount}</strong> of <strong>{nonAdminAllowedCount}</strong> team members online</span>
+                                    <button 
+                                        onClick={() => setShowPresenceModal(false)}
+                                        className="px-4 py-1.5 bg-[#208838] text-white font-bold rounded-xl text-xs hover:bg-[#186a2b]"
+                                    >
+                                        Done
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Confirmation Modal */}
+                    {confirmModal.isOpen && (
+                        <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4">
+                            <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-100 animate-in fade-in zoom-in duration-200">
+                                <h3 className="text-lg font-bold text-slate-900 mb-2">{confirmModal.title}</h3>
+                                <p className="text-slate-600 text-sm mb-6 leading-relaxed">{confirmModal.message}</p>
+                                <div className="flex justify-end gap-3">
+                                    <button 
+                                        onClick={() => setConfirmModal({ isOpen: false, title: '', message: '', onConfirm: null })}
+                                        className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition-colors cursor-pointer"
+                                    >
+                                        Cancel
+                                    </button>
+                                    <button 
+                                        onClick={confirmModal.onConfirm}
+                                        className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl text-xs transition-colors shadow-md cursor-pointer"
+                                    >
+                                        Yes, Delete
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Alert Message Banner */}
+                    {alertMessage && (
+                        <div className="bg-amber-500 text-white px-4 py-3 flex justify-between items-center shadow-md z-20 shrink-0 text-xs sm:text-sm font-bold">
+                            <span>{alertMessage}</span>
+                            <button onClick={() => setAlertMessage(null)} className="text-white hover:text-amber-200 cursor-pointer">
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                            </button>
+                        </div>
+                    )}
+
+                    {/* Header Bar */}
+                    <div className={`p-4 sm:p-5 flex flex-row justify-between items-center gap-3 shrink-0 text-white transition-colors duration-200 ${activeTab === 'team' ? 'bg-[#208838]' : 'bg-purple-800'}`}>
+                        <div className="flex items-center gap-3 truncate">
+                            <AccurateMepLogo className="w-8 h-8 sm:w-10 sm:h-10 shrink-0" />
+                            <h2 className="text-xl sm:text-2xl font-black tracking-tight truncate">
+                                {activeTab === 'team' ? 'Team Workspace' : 'Private Workspace'}
+                            </h2>
+                        </div>
+                        
+                        <div className="flex items-center gap-3">
+                            {isAdmin && (
+                                <button 
+                                    onClick={() => setShowPresenceModal(true)}
+                                    className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-emerald-950/60 border border-emerald-400 text-emerald-100 hover:bg-emerald-900 transition-all text-xs sm:text-sm font-black shadow cursor-pointer"
+                                    title="View who is currently online (Admin only)"
+                                >
+                                    <span className="relative flex h-2.5 w-2.5">
+                                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                                        <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-400"></span>
+                                    </span>
+                                    <span className="hidden sm:inline">Online:</span>
+                                    <span className="bg-emerald-500 text-slate-950 font-black px-2 py-0.5 rounded-md text-xs sm:text-sm">{activeOnlineCount}</span>
+                                </button>
+                            )}
+
+                            <div className={`flex items-center gap-2.5 px-3 py-1.5 rounded-xl border text-xs sm:text-sm shrink-0 text-white ${activeTab === 'team' ? 'bg-[#186a2b] border-emerald-400/50' : 'bg-purple-900 border-purple-500'}`}>
+                                {user.photoURL && <img src={user.photoURL} alt="Profile" className="w-7 h-7 rounded-full border border-white/40" />}
+                                <span className="font-semibold text-slate-100 hidden md:inline">{user.displayName}</span>
+                                <button onClick={handleLogout} className={`font-bold text-slate-100 hover:text-white px-2.5 py-1 rounded-lg transition-colors cursor-pointer text-xs sm:text-sm ${activeTab === 'team' ? 'bg-[#125321] hover:bg-[#0d3f18]' : 'bg-purple-950 hover:bg-black'}`}>Log out</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Workspace Selector Tabs */}
+                    <div className="flex bg-slate-200/90 p-2 gap-2 border-b border-slate-300 shrink-0">
+                        <button 
+                            onClick={() => setActiveTab('team')}
+                            className={`flex-1 py-3.5 text-sm sm:text-base font-black transition-all rounded-xl flex items-center justify-center gap-2.5 cursor-pointer ${
+                                activeTab === 'team' 
+                                    ? 'bg-[#208838] text-white shadow-md ring-2 ring-emerald-400 border-b-2 border-emerald-900' 
+                                    : 'bg-white/80 text-slate-600 hover:bg-white hover:text-slate-900 shadow-sm'
+                            }`}
+                        >
+                            <svg className={`w-5 h-5 sm:w-6 sm:h-6 shrink-0 ${activeTab === 'team' ? 'text-white' : 'text-[#208838]'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>
+                            <span className="tracking-wide">Team Tasks</span>
+                            {activeTab === 'team' && (
+                                <span className="bg-[#145c25] text-emerald-100 text-xs px-2.5 py-0.5 rounded-full font-bold uppercase tracking-wider ml-1 shadow-inner">
+                                    Selected
+                                </span>
+                            )}
+                        </button>
+                        <button 
+                            onClick={() => setActiveTab('private')}
+                            className={`flex-1 py-3.5 text-sm sm:text-base font-black transition-all rounded-xl flex items-center justify-center gap-2.5 cursor-pointer ${
+                                activeTab === 'private' 
+                                    ? 'bg-purple-700 text-white shadow-md ring-2 ring-purple-400 border-b-2 border-purple-900' 
+                                    : 'bg-white/80 text-slate-600 hover:bg-white hover:text-slate-900 shadow-sm'
+                            }`}
+                        >
+                            <svg className={`w-5 h-5 sm:w-6 sm:h-6 shrink-0 ${activeTab === 'private' ? 'text-white' : 'text-purple-600'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
+                            <span className="tracking-wide">Private Tasks</span>
+                            {activeTab === 'private' && (
+                                <span className="bg-purple-900/80 text-purple-100 text-xs px-2.5 py-0.5 rounded-full font-bold uppercase tracking-wider ml-1 shadow-inner">
+                                    Selected
+                                </span>
+                            )}
+                        </button>
+                    </div>
+
+                    {/* Summary Bar: Corporate Deep Navy Blue for Team Tasks */}
+                    {activeTab === 'team' ? (
+                        <div className="bg-[#0c233c] text-sky-100 px-5 py-3 flex flex-wrap items-center justify-between gap-3 text-xs sm:text-sm shrink-0 border-b border-blue-900 shadow-inner transition-colors">
+                            <div className="font-bold flex items-center gap-2 text-white sm:text-sm">
+                                <svg className="w-5 h-5 text-sky-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
+                                <span>Team Tasks Summary {isFilterActive ? '(Filtered)' : ''}:</span>
+                            </div>
+                            <div className="flex flex-wrap items-center gap-2.5">
+                                <span className="bg-[#143252] text-sky-100 px-3 py-1.5 rounded-lg border border-sky-600/60 font-semibold flex items-center gap-1.5 shadow-sm text-xs sm:text-sm">Total: <strong className="text-sky-200 font-black text-sm sm:text-base px-2 py-0.5 bg-[#0a1a2e] rounded-md border border-sky-700">{totalTasksCount}</strong></span>
+                                <span className="bg-amber-100 text-amber-950 border border-amber-300 px-3 py-1.5 rounded-lg font-bold flex items-center gap-1.5 shadow-sm text-xs sm:text-sm">⏳ Pending: <strong className="bg-amber-500 text-white font-black px-2 py-0.5 rounded-md text-sm sm:text-base shadow">{pendingCount}</strong></span>
+                                <span className="bg-blue-100 text-blue-950 border border-blue-300 px-3 py-1.5 rounded-lg font-bold flex items-center gap-1.5 shadow-sm text-xs sm:text-sm">🔥 In Progress: <strong className="bg-blue-600 text-white font-black px-2 py-0.5 rounded-md text-sm sm:text-base shadow">{inProgressCount}</strong></span>
+                                <span className="bg-emerald-100 text-emerald-950 border border-emerald-300 px-3 py-1.5 rounded-lg font-bold flex items-center gap-1.5 shadow-sm text-xs sm:text-sm">✅ Completed: <strong className="bg-emerald-600 text-white font-black px-2 py-0.5 rounded-md text-sm sm:text-base shadow">{completedCount}</strong></span>
+                            </div>
+                        </div>
+                    ) : (
+                        <div className="bg-purple-950 text-purple-100 px-5 py-3 flex flex-wrap items-center justify-between gap-3 text-xs sm:text-sm shrink-0 border-b border-purple-900 shadow-inner transition-colors">
+                            <div className="font-bold flex items-center gap-2 text-white sm:text-sm">
+                                <svg className="w-5 h-5 text-purple-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
+                                <span>Private Tasks Summary {isFilterActive ? '(Filtered)' : ''}:</span>
+                            </div>
+                            <div className="flex flex-wrap items-center gap-2.5">
+                                <span className="bg-purple-900/90 text-purple-100 px-3 py-1.5 rounded-lg border border-purple-700/80 font-semibold flex items-center gap-1.5 shadow-sm text-xs sm:text-sm">Total: <strong className="text-purple-200 font-black text-sm sm:text-base px-2 py-0.5 bg-purple-950 rounded-md border border-purple-700">{totalTasksCount}</strong></span>
+                                <span className="bg-amber-100 text-amber-950 border border-amber-300 px-3 py-1.5 rounded-lg font-bold flex items-center gap-1.5 shadow-sm text-xs sm:text-sm">⏳ Pending: <strong className="bg-amber-500 text-white font-black px-2 py-0.5 rounded-md text-sm sm:text-base shadow">{pendingCount}</strong></span>
+                                <span className="bg-purple-100 text-purple-950 border border-purple-300 px-3 py-1.5 rounded-lg font-bold flex items-center gap-1.5 shadow-sm text-xs sm:text-sm">🔥 In Progress: <strong className="bg-purple-600 text-white font-black px-2 py-0.5 rounded-md text-sm sm:text-base shadow">{inProgressCount}</strong></span>
+                                <span className="bg-emerald-100 text-emerald-950 border border-emerald-300 px-3 py-1.5 rounded-lg font-bold flex items-center gap-1.5 shadow-sm text-xs sm:text-sm">✅ Completed: <strong className="bg-emerald-600 text-white font-black px-2 py-0.5 rounded-md text-sm sm:text-base shadow">{completedCount}</strong></span>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Task Input Form */}
+                    <div className="p-4 sm:p-5 border-b border-slate-200 bg-white shrink-0">
+                        <form onSubmit={handleAddTask} className="flex flex-col gap-3.5">
+                            <div className="flex flex-col md:flex-row gap-2.5">
+                                <input
+                                    type="text"
+                                    placeholder={activeTab === 'team' ? "What does the team need to do?" : "What do you need to do?"}
+                                    className="flex-grow px-4 py-2.5 border border-slate-300 rounded-xl outline-none text-sm sm:text-base font-medium transition-shadow focus:ring-2 focus:ring-[#208838]"
+                                    value={newTaskTitle}
+                                    onChange={(e) => setNewTaskTitle(e.target.value)}
+                                    required
+                                />
+                                {activeTab === 'team' && (
+                                    <input
+                                        type="text"
+                                        placeholder="Assignee name..."
+                                        className="w-full md:w-56 px-4 py-2.5 border border-slate-300 rounded-xl outline-none text-sm sm:text-base font-medium"
+                                        value={newTaskAssignee}
+                                        onChange={(e) => setNewTaskAssignee(e.target.value)}
+                                    />
+                                )}
+                            </div>
+                            <div className="flex flex-col sm:flex-row gap-2.5 items-end">
+                                <div className="w-full sm:w-1/4">
+                                    <label className="block text-xs font-bold text-slate-600 mb-1 uppercase tracking-wider">Due Date</label>
+                                    <input type="date" className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs sm:text-sm font-medium" value={newTaskDueDate} onChange={(e) => setNewTaskDueDate(e.target.value)} />
+                                </div>
+                                <div className="w-full sm:w-1/4">
+                                    <label className="block text-xs font-bold text-slate-600 mb-1 uppercase tracking-wider">Due Time</label>
+                                    <input type="time" className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs sm:text-sm font-medium" value={newTaskDueTime} onChange={(e) => setNewTaskDueTime(e.target.value)} />
+                                </div>
+                                <div className="w-full sm:w-1/4">
+                                    <label className="block text-xs font-bold text-slate-600 mb-1 uppercase tracking-wider">Attachments</label>
+                                    <input 
+                                        type="file" 
+                                        multiple 
+                                        onChange={async (e) => {
+                                            if (e.target.files && e.target.files.length > 0) {
+                                                const converted = await convertFilesToBase64(e.target.files);
+                                                setNewTaskFiles(prev => [...prev, ...converted]);
+                                                e.target.value = ''; 
+                                            }
+                                        }} 
+                                        className="w-full text-xs text-slate-500 file:mr-2 file:py-1.5 file:px-2.5 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-slate-100 file:text-slate-700 hover:file:bg-slate-200 cursor-pointer" 
+                                    />
+                                </div>
+                                <button type="submit" disabled={!newTaskTitle.trim()} className="w-full sm:w-1/4 py-2.5 text-sm sm:text-base text-white font-black rounded-xl transition-all h-[42px] disabled:opacity-50 cursor-pointer bg-gradient-to-r from-[#208838] to-[#176a2b] hover:from-[#176a2b] hover:to-[#125321] shadow-md flex items-center justify-center">
+                                    + Create Task
+                                </button>
+                            </div>
+                            {newTaskFiles.length > 0 && (
+                                <div className="flex flex-wrap gap-2 items-center bg-slate-50 p-2.5 rounded-xl border text-xs sm:text-sm">
+                                    <span className="font-bold text-slate-700">Selected files ({newTaskFiles.length}):</span>
+                                    {newTaskFiles.map((file, fIdx) => (
+                                        <span key={file.id || fIdx} className="bg-white px-2.5 py-1 rounded-lg text-blue-700 border flex items-center gap-1.5 shadow-sm font-medium">
+                                            📄 {file.name}
+                                            <button type="button" onClick={() => {
+                                                setNewTaskFiles(newTaskFiles.filter((_, idx) => idx !== fIdx));
+                                            }} className="text-red-500 font-bold ml-1 cursor-pointer">×</button>
+                                        </span>
+                                    ))}
+                                </div>
+                            )}
+                        </form>
+                    </div>
+
+                    {/* Filter Bar */}
+                    <div className="p-3.5 sm:p-4 bg-slate-100 border-b border-slate-200 flex flex-wrap gap-2.5 items-center text-xs sm:text-sm shrink-0">
+                        <span className="font-bold text-slate-700 flex items-center gap-1.5">
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707v3.172a1 1 0 01-.553.894l-4 2A1 1 0 017 18v-5.586a1 1 0 00-.293-.707L.293 7.293A1 1 0 010 6.586V4z"></path></svg>
+                            Filters:
+                        </span>
+                        <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} className="px-3 py-1.5 rounded-lg border border-slate-300 bg-white font-medium cursor-pointer text-xs sm:text-sm">
+                            <option value="all">All Statuses</option>
+                            <option value="pending">Pending</option>
+                            <option value="in-progress">In Progress</option>
+                            <option value="completed">Completed</option>
+                        </select>
+                        {activeTab === 'team' && (
+                            <select value={filterAssignee} onChange={(e) => setFilterAssignee(e.target.value)} className="px-3 py-1.5 rounded-lg border border-slate-300 bg-white font-medium cursor-pointer text-xs sm:text-sm">
+                                <option value="all">All Assignees</option>
+                                {uniqueAssignees.map(a => <option key={a} value={a}>{a}</option>)}
+                            </select>
+                        )}
+                        <div className="flex items-center gap-1.5 bg-white px-2.5 py-1.5 rounded-lg border border-emerald-300 shadow-sm">
+                            <span className="text-xs sm:text-sm font-bold text-emerald-800 flex items-center gap-1">
+                                📅 Month:
+                            </span>
+                            <input 
+                                type="month" 
+                                value={filterCreatedMonth} 
+                                onChange={(e) => setFilterCreatedMonth(e.target.value)} 
+                                className="bg-transparent text-xs sm:text-sm text-slate-800 font-semibold outline-none cursor-pointer" 
+                                title="Filter all tasks created in this month"
+                            />
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                            <span className="text-xs font-semibold text-slate-500">Day:</span>
+                            <input type="date" value={filterCreatedDate} onChange={(e) => setFilterCreatedDate(e.target.value)} className="px-2 py-1.5 rounded-lg border border-slate-300 bg-white text-xs sm:text-sm" />
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                            <span className="text-xs font-semibold text-slate-500">Due:</span>
+                            <input type="date" value={filterDueDate} onChange={(e) => setFilterDueDate(e.target.value)} className="px-2 py-1.5 rounded-lg border border-slate-300 bg-white text-xs sm:text-sm" />
+                        </div>
+                        {isFilterActive && (
+                            <button onClick={() => { setFilterStatus('all'); setFilterAssignee('all'); setFilterCreatedMonth(''); setFilterCreatedDate(''); setFilterDueDate(''); }} className="text-red-600 font-bold hover:underline ml-auto cursor-pointer text-xs sm:text-sm">
+                                Clear Filters
+                            </button>
+                        )}
+                    </div>
+
+                    {/* Task List */}
+                    <div className="p-3 sm:p-5 bg-slate-100 flex-1">
+                        {loadingData ? (
+                            <p className="text-center text-slate-500 mt-10 font-medium text-base">Loading tasks...</p>
+                        ) : filteredTasks.length === 0 ? (
+                            <div className="text-center text-slate-500 mt-12 pb-12">
+                                <p className="text-lg font-bold mb-1">No tasks match your filters</p>
+                                <p className="text-sm">Try clearing filters or add a new task.</p>
+                            </div>
+                        ) : (
+                            <ul className="space-y-4 pb-20">
+                                {filteredTasks.map((task, index) => {
+                                    let isOverdue = false;
+                                    if (task.dueDateTime && task.status !== 'completed') {
+                                        isOverdue = new Date(task.dueDateTime) < new Date();
+                                    }
+
+                                    const isCompleted = task.status === 'completed';
+                                    const unreadNotesCount = (task.comments || []).length - (readNotesMap[task.id] || 0);
+                                    const isCreator = (user.email && task.creatorEmail && user.email === task.creatorEmail) || (user.uid === task.userId);
+
+                                    return (
+                                    <li key={task.id} className={`border rounded-xl transition-all duration-300 ${getRowStyle(task.status)} shadow-sm`}>
+                                        
+                                        <div className="p-4 sm:p-5 flex flex-col gap-3.5">
+                                            <div className="flex justify-between items-start gap-3">
+                                                
+                                                {editingTaskId === task.id ? (
+                                                    <div className="flex flex-col gap-2.5 flex-grow">
+                                                        <input type="text" className="px-3 py-2 border rounded-xl text-base bg-white font-medium" value={editTitle} onChange={(e) => setEditTitle(e.target.value)} />
+                                                        {activeTab === 'team' && (
+                                                            <input type="text" className="px-3 py-1.5 border rounded-xl text-sm bg-white w-1/2" placeholder="Assignee" value={editAssignee} onChange={(e) => setEditAssignee(e.target.value)} />
+                                                        )}
+                                                        <div className="flex gap-2.5">
+                                                            <input type="date" className="px-3 py-1.5 border rounded-xl text-xs sm:text-sm bg-white" value={editDueDate} onChange={(e) => setEditDueDate(e.target.value)} />
+                                                            <input type="time" className="px-3 py-1.5 border rounded-xl text-xs sm:text-sm bg-white" value={editDueTime} onChange={(e) => setEditDueTime(e.target.value)} />
+                                                        </div>
+                                                        <div className="flex flex-col gap-1.5 mt-1">
+                                                            <label className="text-xs font-bold text-slate-600">Add More Attachments:</label>
+                                                            <input 
+                                                                type="file" 
+                                                                multiple 
+                                                                onChange={async (e) => {
+                                                                    if (e.target.files && e.target.files.length > 0) {
+                                                                        const converted = await convertFilesToBase64(e.target.files);
+                                                                        setEditTaskFiles(prev => [...prev, ...converted]);
+                                                                        e.target.value = '';
+                                                                    }
+                                                                }} 
+                                                                className="text-xs text-slate-600" 
+                                                            />
+                                                            {editTaskFiles.length > 0 && (
+                                                                <div className="flex flex-wrap gap-1.5 mt-1">
+                                                                    {editTaskFiles.map((ef, efIdx) => (
+                                                                        <span key={ef.id || efIdx} className="bg-blue-50 text-blue-700 text-xs px-2.5 py-1 rounded-lg border flex items-center gap-1 font-medium">
+                                                                            📄 {ef.name}
+                                                                            <button type="button" onClick={() => setEditTaskFiles(editTaskFiles.filter((_, i) => i !== efIdx))} className="text-red-500 font-bold ml-1">×</button>
+                                                                        </span>
+                                                                    ))}
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                        <div className="flex gap-2.5 mt-2">
+                                                            <button onClick={() => handleUpdateTask(task.id)} className="bg-emerald-600 text-white px-4 py-1.5 rounded-lg text-xs sm:text-sm font-bold cursor-pointer">Save Changes</button>
+                                                            <button onClick={() => { setEditingTaskId(null); setEditTaskFiles([]); }} className="bg-gray-300 px-4 py-1.5 rounded-lg text-xs sm:text-sm font-bold cursor-pointer">Cancel</button>
+                                                        </div>
+                                                    </div>
+                                                ) : (
+                                                    <h3 className="font-extrabold text-lg sm:text-xl flex items-start gap-2.5 break-words text-slate-900 leading-snug">
+                                                        <span className="mt-1.5 flex h-3 w-3 relative shrink-0">
+                                                            <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${task.status === 'completed' ? 'bg-emerald-400' : 'bg-[#208838]'}`}></span>
+                                                            <span className={`relative inline-flex rounded-full h-3 w-3 ${task.status === 'completed' ? 'bg-emerald-500' : 'bg-[#208838]'}`}></span>
+                                                        </span>
+                                                        {task.title}
+                                                    </h3>
+                                                )}
+
+                                                <div className="flex items-center gap-2.5 shrink-0">
+                                                    <div className="flex flex-col border border-slate-300 rounded-lg overflow-hidden bg-white">
+                                                        <button onClick={() => handleMoveTask(index, 'up')} disabled={index === 0} className="px-1.5 py-1 hover:bg-slate-100 disabled:opacity-30 cursor-pointer text-xs" title="Move Up">▲</button>
+                                                        <button onClick={() => handleMoveTask(index, 'down')} disabled={index === filteredTasks.length - 1} className="px-1.5 py-1 hover:bg-slate-100 disabled:opacity-30 cursor-pointer text-xs" title="Move Down">▼</button>
+                                                    </div>
+
+                                                    <span className="text-xs sm:text-sm font-medium text-slate-600 text-right">
+                                                        Created: {task.createdAt ? formatDateTimeFormatted(new Date(task.createdAt.toMillis()).toISOString()) : 'Just now'}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                            
+                                            <div className="flex flex-wrap items-center gap-2.5 text-xs sm:text-sm">
+                                                {activeTab === 'team' && (
+                                                    <span className="px-3.5 py-1.5 rounded-xl font-bold shadow-sm border flex items-center gap-2 bg-blue-100 text-blue-950 border-blue-300">
+                                                        👤 <span className="text-xs font-medium text-slate-700">Assigned for:</span> <strong className="text-blue-950 font-black text-sm sm:text-base">{task.assignee}</strong>
+                                                    </span>
+                                                )}
+                                                
+                                                {task.dueDateTime && (
+                                                    <span className={`px-3 py-1.5 rounded-xl font-bold shadow-sm border flex items-center gap-1.5 ${isCompleted ? 'bg-emerald-200 text-emerald-950 border-emerald-300' : isOverdue ? 'bg-red-100 text-red-900 border-red-300 animate-pulse' : 'bg-amber-50 text-amber-900 border-amber-200'}`}>
+                                                        {isOverdue && !isCompleted ? '⚠️ OVERDUE:' : '🎯 Due:'} {formatDateTimeFormatted(task.dueDateTime)}
+                                                    </span>
+                                                )}
+
+                                                <button 
+                                                    onClick={() => openTaskNotes(task.id, task.comments)}
+                                                    className={`relative font-black flex items-center gap-2 px-4 py-1.5 rounded-xl border shadow transition-all cursor-pointer text-xs sm:text-sm ${unreadNotesCount > 0 ? 'bg-amber-400 text-slate-950 border-amber-500 animate-bounce' : 'bg-[#208838] text-white border-emerald-700 hover:bg-[#186a2b]'}`}
+                                                >
+                                                    <svg className="w-4 h-4 text-emerald-200" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path></svg>
+                                                    <span>📝 {task.comments?.length || 0} Notes</span>
+                                                    {unreadNotesCount > 0 && (
+                                                        <span className="absolute -top-2.5 -right-2 bg-red-600 text-white text-xs font-black px-2 py-0.5 rounded-full shadow">
+                                                            {unreadNotesCount} New
+                                                        </span>
+                                                    )}
+                                                </button>
+
+                                                {isCreator ? (
+                                                    <button onClick={() => { setEditingTaskId(task.id); setEditTitle(task.title); setEditAssignee(task.assignee); setEditTaskFiles([]); }} className="px-3 py-1.5 bg-white border border-slate-300 text-slate-700 font-bold rounded-lg shadow-sm hover:bg-slate-50 text-xs sm:text-sm cursor-pointer">
+                                                        ✏️ Edit Task
+                                                    </button>
+                                                ) : (
+                                                    <span className="text-xs text-slate-500 italic">Created by {task.creatorName || 'Teammate'} (Read-only)</span>
+                                                )}
+                                            </div>
+
+                                            {task.attachments && task.attachments.length > 0 && (
+                                                <div className="flex flex-wrap gap-2 mt-1.5 pt-2.5 border-t border-slate-200/50 items-center">
+                                                    <span className="text-xs font-bold text-slate-700">📎 Attachments ({task.attachments.length}):</span>
+                                                    {task.attachments.map((file) => (
+                                                        <div key={file.id} className="flex items-center gap-1.5 bg-white px-3 py-1.5 rounded-lg border border-slate-300 text-xs font-bold text-blue-700 shadow-sm">
+                                                            <button 
+                                                                onClick={() => handleDownloadAttachment(task.id, file)} 
+                                                                className="hover:underline truncate max-w-[180px] text-blue-700 font-bold cursor-pointer flex items-center gap-1"
+                                                                disabled={downloadingFileId === file.id}
+                                                            >
+                                                                {downloadingFileId === file.id ? '⏳ Downloading...' : `📄 ${file.name}`}
+                                                            </button>
+                                                            <button onClick={() => handleRemoveAttachment(task.id, file.id)} className="text-red-500 hover:text-red-700 font-bold ml-1 cursor-pointer" title="Remove attachment">
+                                                                ×
+                                                            </button>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
+
+                                            {task.followUps && task.followUps.length > 0 && (
+                                                <div className={`mt-1.5 space-y-2 p-2.5 rounded-xl border ${isCompleted ? 'bg-emerald-200/50 border-emerald-300' : 'bg-white/70 border-slate-200'}`}>
+                                                    <h4 className={`text-xs font-bold uppercase tracking-wider mb-1 ${isCompleted ? 'text-emerald-950' : 'text-slate-600'}`}>Recorded Follow-ups</h4>
+                                                    {task.followUps.map((fu) => (
+                                                        <div key={fu.id} className={`flex flex-col sm:flex-row sm:items-center justify-between p-2.5 rounded-lg border text-xs sm:text-sm gap-2 ${fu.status === 'completed' ? 'bg-slate-200 text-slate-600 border-slate-300 opacity-70' : 'bg-emerald-50 text-emerald-950 border-emerald-200'}`}>
+                                                            <div className="flex flex-wrap items-center gap-2">
+                                                                <span className="font-bold">Follow-up {fu.number}</span>
+                                                                <span className="bg-white px-2 py-0.5 rounded border text-xs sm:text-sm font-semibold">📅 {formatDateTimeFormatted(fu.dateTime)}</span>
+                                                                <span className="italic text-xs opacity-80">by {fu.author}</span>
+                                                            </div>
+                                                            <button onClick={() => toggleFollowUpStatus(task.id, fu.id)} className={`px-2.5 py-1 rounded-md font-bold text-xs cursor-pointer ${fu.status === 'completed' ? 'bg-slate-300 text-slate-700' : 'bg-[#208838] text-white'}`}>
+                                                                {fu.status === 'completed' ? 'Undo' : 'Mark Complete'}
+                                                            </button>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
+
+                                            {schedulingFollowUpId === task.id ? (
+                                                <div className="bg-emerald-50 p-3 rounded-xl border border-emerald-200 flex flex-col gap-2 mt-1">
+                                                    <div className="flex gap-2">
+                                                        <input type="date" value={followUpDate} onChange={(e) => setFollowUpDate(e.target.value)} className="w-1/2 px-2.5 py-1.5 text-xs sm:text-sm border rounded-lg bg-white" />
+                                                        <input type="time" value={followUpTime} onChange={(e) => setFollowUpTime(e.target.value)} className="w-1/2 px-2.5 py-1.5 text-xs sm:text-sm border rounded-lg bg-white" />
+                                                    </div>
+                                                    <div className="flex gap-2 justify-end">
+                                                        <button onClick={() => submitScheduledFollowUp(task.id)} className="bg-[#208838] text-white px-3.5 py-1.5 rounded-lg text-xs sm:text-sm font-bold cursor-pointer">Save</button>
+                                                        <button onClick={() => setSchedulingFollowUpId(null)} className="bg-white border px-3 py-1.5 rounded-lg text-xs sm:text-sm font-bold cursor-pointer">Cancel</button>
+                                                    </div>
+                                                </div>
+                                            ) : (
+                                                <button onClick={() => openScheduleFollowUp(task.id)} className={`text-xs sm:text-sm font-bold transition-colors flex items-center px-3 py-1.5 rounded-lg shadow-sm border w-fit cursor-pointer ${isCompleted ? 'bg-emerald-200 text-emerald-950 border-emerald-300' : 'bg-white border-slate-300 text-slate-700'}`}>
+                                                    ➕ Record Follow-up
+                                                </button>
+                                            )}
+
+                                            <div className="flex items-center justify-between pt-3.5 mt-1 border-t border-slate-200/40 gap-3">
+                                                <select
+                                                    value={task.status}
+                                                    onChange={(e) => handleStatusChange(task.id, e.target.value)}
+                                                    className={`cursor-pointer pl-3 pr-8 py-2 text-xs sm:text-sm font-bold rounded-xl border shadow-sm appearance-none ${task.status === 'completed' ? 'bg-emerald-200 text-emerald-950 border-emerald-300' : task.status === 'in-progress' ? 'bg-blue-100 text-blue-950 border-blue-300' : 'bg-amber-100 text-amber-950 border-amber-300'}`}
+                                                >
+                                                    <option value="pending">⏳ Pending</option>
+                                                    <option value="in-progress">🔥 In Progress</option>
+                                                    <option value="completed">✅ Completed</option>
+                                                </select>
+                                                
+                                                {isCreator ? (
+                                                    <button onClick={() => confirmDeleteTask(task.id, task.creatorEmail, task.userId, task.title)} className="px-3.5 py-2 rounded-xl border transition-all shadow-sm cursor-pointer text-red-600 hover:bg-red-50 bg-white border-red-200 text-xs sm:text-sm font-bold flex items-center gap-1.5" title="Delete Task">
+                                                        🗑️ Delete Task
+                                                    </button>
+                                                ) : (
+                                                    <span className="text-xs text-slate-500 italic">Only creator can delete</span>
+                                                )}
+                                            </div>
+                                        </div>
+
+                                        {/* Notes Discussion Section */}
+                                        {expandedTaskId === task.id && (
+                                            <div className={`border-t p-3 sm:p-4 ${isCompleted ? 'bg-emerald-200/70 border-emerald-300' : 'bg-slate-50 border-slate-200'}`}>
+                                                <h4 className="text-xs font-bold mb-2 flex items-center gap-1.5 text-slate-800">
+                                                    📝 Discussion & Notes
+                                                </h4>
+                                                
+                                                <div className="space-y-2.5 mb-3 max-h-48 overflow-y-auto custom-scrollbar pr-1">
+                                                    {!task.comments || task.comments.length === 0 ? (
+                                                        <p className="text-xs text-slate-500 italic bg-white p-3 rounded border border-slate-200 text-center">No notes yet.</p>
+                                                    ) : (
+                                                        task.comments.map((comment, cIdx) => (
+                                                            <div key={comment.id || cIdx} className="flex gap-2">
+                                                                {comment.photoURL ? 
+                                                                    <img src={comment.photoURL} alt="" className="w-6 h-6 rounded-full border mt-0.5 shrink-0" /> : 
+                                                                    <div className="w-6 h-6 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-800 text-[10px] font-bold mt-0.5 shrink-0">{comment.author.charAt(0)}</div>
+                                                                }
+                                                                <div className="bg-white p-2.5 rounded-lg border border-slate-200 shadow-sm text-xs flex-grow">
+                                                                    <div className="flex justify-between items-center mb-0.5">
+                                                                        <span className="font-bold text-slate-900">{comment.author}</span>
+                                                                        <div className="flex items-center gap-2">
+                                                                            <span className="text-[10px] text-slate-600">{formatDateTimePlain(comment.date)}</span>
+                                                                            {comment.author === user.displayName && (
+                                                                                <div className="flex gap-1">
+                                                                                    <button onClick={() => { setEditingNoteIndex(cIdx); setEditNoteText(comment.text); }} className="text-blue-600 hover:underline cursor-pointer">Edit</button>
+                                                                                    <button onClick={() => confirmDeleteComment(task.id, comment.id)} className="text-red-600 hover:underline cursor-pointer">Delete</button>
+                                                                                </div>
+                                                                            )}
+                                                                        </div>
+                                                                    </div>
+
+                                                                    {editingNoteIndex === cIdx ? (
+                                                                        <div className="flex gap-2 mt-1">
+                                                                            <input type="text" className="flex-grow px-2 py-1 border rounded text-xs" value={editNoteText} onChange={(e) => setEditNoteText(e.target.value)} />
+                                                                            <button onClick={() => handleUpdateComment(task.id, comment.id)} className="bg-emerald-600 text-white px-2 py-0.5 rounded text-[11px] cursor-pointer">Save</button>
+                                                                            <button onClick={() => setEditingNoteIndex(null)} className="bg-gray-200 px-2 py-0.5 rounded text-[11px] cursor-pointer">Cancel</button>
+                                                                        </div>
+                                                                    ) : (
+                                                                        <p className="text-slate-800 whitespace-pre-wrap leading-normal">{comment.text}</p>
+                                                                    )}
+
+                                                                    {comment.attachments && comment.attachments.length > 0 && (
+                                                                        <div className="flex flex-wrap gap-1 mt-2 pt-1 border-t border-slate-100 items-center">
+                                                                            <span className="text-[10px] font-bold text-slate-700">Attachments ({comment.attachments.length}):</span>
+                                                                            {comment.attachments.map((att, aIdx) => (
+                                                                                <div key={att.id || aIdx} className="flex items-center gap-1 text-[10px] bg-slate-100 text-blue-700 px-2 py-0.5 rounded border hover:bg-slate-200">
+                                                                                        <button 
+                                                                                        onClick={() => handleDownloadAttachment(task.id, att)} 
+                                                                                        className="truncate max-w-[120px] font-semibold text-blue-700 hover:underline cursor-pointer"
+                                                                                        disabled={downloadingFileId === att.id}
+                                                                                    >
+                                                                                        {downloadingFileId === att.id ? '⏳' : '📎'} {att.name}
+                                                                                    </button>
+                                                                                    {comment.author === user.displayName && (
+                                                                                        <button onClick={() => handleRemoveCommentAttachment(task.id, comment.id, att.id)} className="text-red-500 hover:text-red-700 font-bold ml-0.5 cursor-pointer" title="Remove file">
+                                                                                            ×
+                                                                                        </button>
+                                                                                    )}
+                                                                                </div>
+                                                                            ))}
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                        ))
+                                                    )}
+                                                </div>
+
+                                                <div className="flex flex-col gap-2">
+                                                    <div className="flex gap-1.5">
+                                                        <input
+                                                            type="text"
+                                                            placeholder="Write a note..."
+                                                            className="flex-grow px-3 py-1.5 text-xs border border-slate-300 rounded focus:ring-2 focus:ring-[#208838] bg-white"
+                                                            value={commentText}
+                                                            onChange={(e) => setCommentText(e.target.value)}
+                                                            onKeyDown={(e) => e.key === 'Enter' && handleAddComment(task.id)}
+                                                        />
+                                                        <button onClick={() => handleAddComment(task.id)} className="px-3 py-1.5 bg-slate-800 text-white text-xs font-bold rounded shadow-sm hover:bg-slate-700 cursor-pointer">
+                                                            Post
+                                                        </button>
+                                                    </div>
+                                                    <div className="flex items-center justify-between">
+                                                        <div className="flex items-center gap-2">
+                                                            <span className="text-[10px] text-slate-600">Attach files to note:</span>
+                                                            <input 
+                                                                type="file" 
+                                                                multiple 
+                                                                onChange={async (e) => {
+                                                                    if (e.target.files && e.target.files.length > 0) {
+                                                                        const converted = await convertFilesToBase64(e.target.files);
+                                                                        setCommentFiles(prev => [...prev, ...converted]);
+                                                                        e.target.value = '';
+                                                                    }
+                                                                }} 
+                                                                className="text-[10px] text-slate-600 cursor-pointer" 
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                    {commentFiles.length > 0 && (
+                                                        <div className="flex flex-wrap gap-1.5 items-center bg-white p-1.5 rounded border text-[11px]">
+                                                            <span className="font-bold text-slate-700">Selected note files ({commentFiles.length}):</span>
+                                                            {commentFiles.map((file, fIdx) => (
+                                                                <span key={file.id || fIdx} className="bg-slate-100 px-2 py-0.5 rounded text-blue-700 border flex items-center gap-1 shadow-sm">
+                                                                    📄 {file.name}
+                                                                    <button type="button" onClick={() => {
+                                                                        setCommentFiles(commentFiles.filter((_, idx) => idx !== fIdx));
+                                                                    }} className="text-red-500 font-bold ml-1 cursor-pointer">×</button>
+                                                                </span>
+                                                            ))}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        )}
+                                    </li>
+                                    )})}
+                            </ul>
+                        )}
+                    </div>
+                </div>
+            );
+        };
+
+        const rootElement = document.getElementById('root');
+        if (rootElement) {
+            const root = createRoot(rootElement);
+            root.render(<App />);
+        }
+    </script>
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('./sw.js').catch((error) => {
+                    console.error('App installation support could not start:', error);
+                });
+            });
+        }
+    </script>
+</body>
+</html>

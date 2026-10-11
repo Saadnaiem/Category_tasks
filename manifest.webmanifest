@@ -1,0 +1,18 @@
+{
+  "name": "Team Workspace",
+  "short_name": "Workspace",
+  "description": "Team task workspace with real-time collaboration.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#1e5e29",
+  "icons": [
+    {
+      "src": "./icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
