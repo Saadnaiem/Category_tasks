@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Team Workspace</title>
+    <meta name="theme-color" content="#1e5e29">
+    <link rel="manifest" href="./manifest.webmanifest">
     
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
@@ -48,7 +50,7 @@
 
     <script type="text/babel" data-presets="react" data-type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, browserLocalPersistence, setPersistence } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect, signOut, onAuthStateChanged, browserLocalPersistence, setPersistence } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, setDoc, getDocs, getDoc, serverTimestamp, query, where, arrayUnion } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         
         const { useState, useEffect, useRef } = React;
@@ -334,9 +336,18 @@
                     if (err.code === 'auth/unauthorized-domain') {
                         setAuthError({
                             title: "Domain Not Authorized",
-                            message: "Google Sites domain is blocked. Please ensure 'googleusercontent.com' is listed in your Firebase Authorized Domains."
+                            message: `The domain '${window.location.hostname}' is not authorized. Add it in Firebase Console > Authentication > Settings > Authorized domains.`
                         });
-                    } else if (err.code === 'auth/popup-closed-by-user' || err.code === 'auth/popup-blocked') {
+                    } else if (err.code === 'auth/popup-blocked') {
+                        try {
+                            await signInWithRedirect(auth, provider);
+                        } catch (redirectErr) {
+                            setAuthError({
+                                title: "Popup Blocked",
+                                message: "Please allow popups for this site to complete the Google sign-in process."
+                            });
+                        }
+                    } else if (err.code === 'auth/popup-closed-by-user') {
                         setAuthError({
                             title: "Popup Blocked or Closed",
                             message: "Please allow popups for this site to complete the Google sign-in process."
@@ -1837,6 +1848,15 @@
                     <App />
                 </ErrorBoundary>
             );
+        }
+    </script>
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('./sw.js').catch((error) => {
+                    console.error('App installation support could not start:', error);
+                });
+            });
         }
     </script>
 </body>
