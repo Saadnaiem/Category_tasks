@@ -18,7 +18,7 @@
             padding: 0; 
             width: 100%;
             min-height: 100%; 
-            background-color: transparent; 
+            background-color: #f1f5f9; 
             font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; 
             overflow-x: hidden; /* Prevent horizontal scrolling on mobile */
         }
@@ -28,8 +28,24 @@
             display: flex;
             flex-direction: column;
             align-items: center;
-            padding: 10px 14px; 
+            justify-content: flex-start;
+            padding: 12px 10px; 
             box-sizing: border-box;
+        }
+        @media (min-width: 640px) {
+            #root { 
+                padding: 24px 20px; 
+            }
+        }
+        @media (min-width: 1024px) {
+            #root { 
+                padding: 32px 36px; 
+            }
+        }
+        @media (min-width: 1280px) {
+            #root { 
+                padding: 40px 48px; 
+            }
         }
         .custom-scrollbar::-webkit-scrollbar { width: 6px; }
         .custom-scrollbar::-webkit-scrollbar-thumb { background-color: #cbd5e1; border-radius: 4px; }
@@ -684,9 +700,79 @@
                 }
             };
 
+            const base64ToBlob = (base64Data, contentType = '') => {
+                try {
+                    let mime = contentType;
+                    let base64 = base64Data;
+                    if (base64Data.startsWith('data:')) {
+                        const commaIndex = base64Data.indexOf(',');
+                        const meta = base64Data.substring(0, commaIndex);
+                        base64 = base64Data.substring(commaIndex + 1);
+                        const mimeMatch = meta.match(/:(.*?);/);
+                        if (mimeMatch) mime = mimeMatch[1];
+                    }
+                    base64 = base64.replace(/\s/g, '');
+                    const byteCharacters = atob(base64);
+                    const byteArrays = [];
+                    const sliceSize = 512 * 1024;
+                    for (let offset = 0; offset < byteCharacters.length; offset += sliceSize) {
+                        const slice = byteCharacters.slice(offset, offset + sliceSize);
+                        const byteNumbers = new Uint8Array(slice.length);
+                        for (let i = 0; i < slice.length; i++) {
+                            byteNumbers[i] = slice.charCodeAt(i);
+                        }
+                        byteArrays.push(byteNumbers);
+                    }
+                    return new Blob(byteArrays, { type: mime || 'application/octet-stream' });
+                } catch (e) {
+                    console.error("Error converting base64 to blob:", e);
+                    return null;
+                }
+            };
+
+            const triggerDownload = (dataUrl, filename, mimeType) => {
+                try {
+                    const blob = base64ToBlob(dataUrl, mimeType);
+                    if (!blob) throw new Error("Blob conversion failed");
+                    
+                    const blobUrl = URL.createObjectURL(blob);
+                    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || 
+                                  (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
+                    const link = document.createElement('a');
+                    link.href = blobUrl;
+                    link.download = filename || 'attachment';
+                    // On iOS Safari / WebKit mobile, target='_blank' ensures reliable download or preview
+                    if (isIOS) {
+                        link.target = '_blank';
+                        link.rel = 'noopener noreferrer';
+                    }
+                    document.body.appendChild(link);
+                    link.click();
+
+                    setTimeout(() => {
+                        if (link.parentNode) {
+                            document.body.removeChild(link);
+                        }
+                        URL.revokeObjectURL(blobUrl);
+                    }, 60000);
+                } catch (err) {
+                    console.warn("Blob download fallback:", err);
+                    const link = document.createElement('a');
+                    link.href = dataUrl;
+                    link.download = filename || 'attachment';
+                    link.target = '_blank';
+                    document.body.appendChild(link);
+                    link.click();
+                    setTimeout(() => {
+                        if (link.parentNode) document.body.removeChild(link);
+                    }, 2000);
+                }
+            };
+
             const handleDownloadAttachment = async (taskId, file) => {
                 if (file.data && file.data.startsWith('data:')) {
-                    triggerDownload(file.data, file.name);
+                    triggerDownload(file.data, file.name, file.type);
                     return;
                 }
                 try {
@@ -704,7 +790,7 @@
                     snap.forEach(d => chunks.push(d.data()));
                     chunks.sort((a, b) => a.index - b.index);
                     const fullBase64 = chunks.map(c => c.data).join('');
-                    triggerDownload(fullBase64, file.name);
+                    triggerDownload(fullBase64, file.name, file.type);
                 } catch (err) {
                     console.error("Download error:", err);
                     setAlertMessage("❌ Could not download file: " + err.message);
@@ -712,15 +798,6 @@
                 } finally {
                     setDownloadingFileId(null);
                 }
-            };
-
-            const triggerDownload = (dataUrl, filename) => {
-                const link = document.createElement('a');
-                link.href = dataUrl;
-                link.download = filename;
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
             };
 
             const handleRemoveAttachment = async (taskId, fileId) => {
@@ -1030,7 +1107,7 @@
 
             if (authLoading) {
                 return (
-                    <div className="flex flex-col items-center justify-center min-h-[400px] w-full bg-[#208838] rounded-2xl p-8 shadow-xl">
+                    <div className="flex flex-col items-center justify-center min-h-[400px] w-full max-w-md mx-auto bg-[#208838] rounded-2xl p-8 shadow-xl">
                         <AccurateMepLogo className="w-20 h-20 animate-pulse" />
                         <span className="mt-4 text-white font-bold tracking-wide text-sm">Opening Team Workspace...</span>
                     </div>
@@ -1039,7 +1116,7 @@
 
             if (!user) {
                 return (
-                    <div className="min-h-[580px] w-full flex items-center justify-center p-4 sm:p-6 bg-gradient-to-br from-[#166026] via-[#208838] to-[#28a745] rounded-3xl relative overflow-hidden shadow-2xl">
+                    <div className="min-h-[580px] w-full max-w-5xl xl:max-w-6xl 2xl:max-w-7xl mx-auto flex items-center justify-center p-4 sm:p-6 bg-gradient-to-br from-[#166026] via-[#208838] to-[#28a745] rounded-3xl relative overflow-hidden shadow-2xl">
                         <div className="absolute -top-24 -left-24 w-80 h-80 rounded-full bg-white/10 blur-3xl pointer-events-none"></div>
                         <div className="absolute -bottom-24 -right-24 w-80 h-80 rounded-full bg-emerald-200/15 blur-3xl pointer-events-none"></div>
                         <div className="w-full max-w-md mx-auto bg-white/95 backdrop-blur-md p-6 sm:p-8 rounded-3xl shadow-2xl border border-white/40 text-center relative z-10">
@@ -1090,7 +1167,7 @@
             }
 
             return (
-                <div className="w-full max-w-[97%] 2xl:max-w-[96%] mx-auto bg-white rounded-2xl shadow-xl border border-slate-200 flex flex-col relative mb-4 overflow-hidden">
+                <div className="w-full max-w-5xl xl:max-w-6xl 2xl:max-w-7xl mx-auto bg-white rounded-2xl shadow-xl border border-slate-200 flex flex-col relative mb-8 overflow-hidden">
                     
                     {/* Admin Access Management Modal */}
                     {showAdminModal && isAdmin && (
@@ -1601,13 +1678,15 @@
                                                         {task.attachments.map((file) => (
                                                             <div key={file.id} className="flex items-center gap-2 bg-white px-3 py-2 rounded-lg border border-slate-300 text-xs font-bold text-blue-700 shadow-sm max-w-full">
                                                                 <button 
+                                                                    type="button"
                                                                     onClick={() => handleDownloadAttachment(task.id, file)} 
-                                                                    className="hover:underline truncate max-w-[200px] text-blue-700 font-bold cursor-pointer flex items-center gap-1.5"
+                                                                    className="hover:underline truncate max-w-[200px] sm:max-w-[280px] text-blue-700 font-bold cursor-pointer flex items-center gap-1.5 touch-manipulation"
                                                                     disabled={downloadingFileId === file.id}
+                                                                    title="Click to download attachment"
                                                                 >
                                                                     {downloadingFileId === file.id ? '⏳ Downloading...' : `📄 ${file.name}`}
                                                                 </button>
-                                                                <button onClick={() => handleRemoveAttachment(task.id, file.id)} className="text-red-500 hover:text-red-700 font-black ml-1 cursor-pointer p-1 shrink-0" title="Remove attachment">
+                                                                <button type="button" onClick={() => handleRemoveAttachment(task.id, file.id)} className="text-red-500 hover:text-red-700 font-black ml-1 cursor-pointer p-1 shrink-0" title="Remove attachment">
                                                                     ×
                                                                 </button>
                                                             </div>
@@ -1719,15 +1798,17 @@
                                                                             <div className="flex flex-wrap gap-2 w-full sm:w-auto">
                                                                                 {comment.attachments.map((att, aIdx) => (
                                                                                     <div key={att.id || aIdx} className="flex items-center gap-1.5 text-[11px] bg-slate-50 text-blue-700 px-2.5 py-1.5 rounded-lg border shadow-sm max-w-full">
-                                                                                            <button 
+                                                                                        <button 
+                                                                                            type="button"
                                                                                             onClick={() => handleDownloadAttachment(task.id, att)} 
-                                                                                            className="truncate max-w-[150px] font-bold text-blue-700 hover:underline cursor-pointer"
+                                                                                            className="truncate max-w-[180px] sm:max-w-[260px] font-bold text-blue-700 hover:underline cursor-pointer touch-manipulation flex items-center gap-1"
                                                                                             disabled={downloadingFileId === att.id}
+                                                                                            title="Click to download attachment"
                                                                                         >
-                                                                                            {downloadingFileId === att.id ? '⏳' : '📎'} {att.name}
+                                                                                            {downloadingFileId === att.id ? '⏳ Downloading...' : `📎 ${att.name}`}
                                                                                         </button>
                                                                                         {comment.author === user.displayName && (
-                                                                                            <button onClick={() => handleRemoveCommentAttachment(task.id, comment.id, att.id)} className="text-red-500 hover:text-red-700 font-black ml-1 cursor-pointer p-1 shrink-0" title="Remove file">
+                                                                                            <button type="button" onClick={() => handleRemoveCommentAttachment(task.id, comment.id, att.id)} className="text-red-500 hover:text-red-700 font-black ml-1 cursor-pointer p-1 shrink-0" title="Remove file">
                                                                                                 ×
                                                                                             </button>
                                                                                         )}
